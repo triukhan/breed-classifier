@@ -53,7 +53,7 @@ test_loader  = DataLoader(test_dataset,  batch_size=32, shuffle=False, num_worke
 
 mdl = models.resnet50(weights=None)
 mdl.fc = nn.Linear(mdl.fc.in_features,120)
-state_dict = torch.load('best_model.pth', map_location='cuda',weights_only=True)
+state_dict = torch.load('best_model.pth', map_location='cuda', weights_only=True)
 mdl.load_state_dict(state_dict, strict=True)
 
 print(eval_epoch(mdl.cuda(), test_loader, nn.CrossEntropyLoss()))

@@ -57,9 +57,8 @@ test_loader  = DataLoader(test_dataset,  batch_size=32, shuffle=False, num_worke
 def get_model(num_classes=120):
     mdl = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
 
-    # freeze backbone
     for param in mdl.parameters():
-        param.requires_grad = False
+        param.requires_grad = True
     # replace head
     mdl.fc = nn.Linear(mdl.fc.in_features, num_classes)
 
@@ -102,7 +101,7 @@ def eval_epoch(mdl, loader, criterion):
     return total_loss / len(loader), correct / len(loader.dataset)
 
 
-def train(mdl, train_loader, val_loader, epochs=10, lr=1e-3):
+def train(mdl, t_loader, v_loader, epochs=10, lr=1e-3):
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(mdl.fc.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
@@ -110,8 +109,8 @@ def train(mdl, train_loader, val_loader, epochs=10, lr=1e-3):
     best_val_acc = 0
 
     for epoch in range(epochs):
-        train_loss, train_acc = train_epoch(mdl, train_loader, criterion, optimizer)
-        val_loss, val_acc = eval_epoch(mdl, val_loader, criterion)
+        train_loss, train_acc = train_epoch(mdl, t_loader, criterion, optimizer)
+        val_loss, val_acc = eval_epoch(mdl, v_loader, criterion)
         scheduler.step()
 
         print(f'Epoch {epoch+1}/{epochs} '
