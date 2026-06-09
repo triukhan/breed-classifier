@@ -58,9 +58,15 @@ def get_model(num_classes=120):
     mdl = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
 
     for param in mdl.parameters():
+        param.requires_grad = False
+
+    for param in mdl.layer4.parameters():
         param.requires_grad = True
-    # replace head
-    mdl.fc = nn.Linear(mdl.fc.in_features, num_classes)
+
+    for param in mdl.fc.parameters():
+        param.requires_grad = True
+
+    mdl.fc = nn.Linear(mdl.fc.in_features, num_classes) # because 120 classes
 
     return mdl.to('cuda')
 
@@ -102,9 +108,12 @@ def eval_epoch(mdl, loader, criterion):
 
 
 def train(mdl, t_loader, v_loader, epochs=10, lr=1e-3):
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(mdl.fc.parameters(), lr=lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, mdl.parameters()), lr=lr, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=10
+    )
 
     best_val_acc = 0
 
@@ -122,7 +131,6 @@ def train(mdl, t_loader, v_loader, epochs=10, lr=1e-3):
             torch.save(mdl.state_dict(), 'best_model.pth')
             print(f'  -> saved best model (val_acc={val_acc:.4f})')
 
-    return model
 
 model = get_model(num_classes=120)
-model = train(model, train_loader, val_loader, epochs=10, lr=1e-3)
+train(model, train_loader, val_loader, epochs=10, lr=1e-4)

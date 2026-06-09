@@ -35,8 +35,17 @@ class BreedDataset(Dataset):
 
         img = cv2.imread(row['img_path'])
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        h, w, _ = img.shape
 
         xmin, ymin, xmax, ymax = get_bbox(row['annotation_path'])
+
+        pad = 10
+
+        xmin = max(0, xmin - pad)
+        ymin = max(0, ymin - pad)
+        xmax = min(w, xmax + pad)
+        ymax = min(h, ymax + pad)
+
         img = img[ymin:ymax, xmin:xmax]
 
         if self.transform:
