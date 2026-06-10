@@ -1,7 +1,11 @@
 import os
+import random
+
+import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
+from timm.utils import ModelEmaV2
 from torch.utils.data import DataLoader
 from scipy.io import loadmat
 from torchvision import transforms
@@ -14,6 +18,8 @@ from dataset import BreedDataset
 load_dotenv()
 DATASET = os.getenv('DATASET_PATH')
 mat_data = loadmat(f'{DATASET}/file_list.mat')
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 data = []
 for num, img_path in enumerate(mat_data['file_list']):
@@ -49,9 +55,23 @@ train_dataset = BreedDataset(train_df, transform=train_transform)
 val_dataset   = BreedDataset(val_df,   transform=val_transform)
 test_dataset  = BreedDataset(test_df,  transform=val_transform)
 
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True,  num_workers=4, pin_memory=True)
-val_loader   = DataLoader(val_dataset,   batch_size=32, shuffle=False, num_workers=4, pin_memory=True)
-test_loader  = DataLoader(test_dataset,  batch_size=32, shuffle=False, num_workers=4, pin_memory=True)
+g = torch.Generator()
+g.manual_seed(42)
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True,  num_workers=4, pin_memory=True, generator=g)
+val_loader   = DataLoader(val_dataset,   batch_size=32, shuffle=False, num_workers=4, pin_memory=True, generator=g)
+test_loader  = DataLoader(test_dataset,  batch_size=32, shuffle=False, num_workers=4, pin_memory=True, generator=g)
+
+
+def set_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def get_model(num_classes=120):
@@ -60,10 +80,10 @@ def get_model(num_classes=120):
     for param in mdl.parameters():
         param.requires_grad = False
 
-    for param in mdl.layer4.parameters():
+    for param in mdl.layer3.parameters():
         param.requires_grad = True
 
-    for param in mdl.fc.parameters():
+    for param in mdl.layer4.parameters():
         param.requires_grad = True
 
     mdl.fc = nn.Linear(mdl.fc.in_features, num_classes) # because 120 classes
@@ -107,13 +127,14 @@ def eval_epoch(mdl, loader, criterion):
     return total_loss / len(loader), correct / len(loader.dataset)
 
 
-def train(mdl, t_loader, v_loader, epochs=10, lr=1e-3):
+def train(mdl, t_loader, v_loader, epochs=10):
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
-    optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, mdl.parameters()), lr=lr, weight_decay=1e-4)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=10
-    )
+    optimizer = torch.optim.Adam([
+        {'params': mdl.layer3.parameters(), 'lr': 1e-5},
+        {'params': mdl.layer4.parameters(), 'lr': 3e-5},
+        {'params': mdl.fc.parameters(), 'lr': 1e-4},
+    ], weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
     best_val_acc = 0
 
@@ -131,6 +152,6 @@ def train(mdl, t_loader, v_loader, epochs=10, lr=1e-3):
             torch.save(mdl.state_dict(), 'best_model.pth')
             print(f'  -> saved best model (val_acc={val_acc:.4f})')
 
-
+set_seed(42)
 model = get_model(num_classes=120)
-train(model, train_loader, val_loader, epochs=10, lr=1e-4)
+train(model, train_loader, val_loader, epochs=10)
