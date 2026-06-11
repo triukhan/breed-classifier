@@ -12,7 +12,6 @@ from torchvision import transforms
 import torch
 import torch.nn as nn
 from torchvision import models
-
 from dataset import BreedDataset
 
 load_dotenv()
@@ -21,7 +20,21 @@ mat_data = loadmat(f'{DATASET}/file_list.mat')
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
+
+def set_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+set_seed(42)
 data = []
+
 for num, img_path in enumerate(mat_data['file_list']):
     data.append({
         'img_path': f'{DATASET}/images/{str(img_path[0][0])}',
@@ -36,8 +49,7 @@ val_df, test_df = train_test_split(temp_df, test_size=0.5, random_state=42, stra
 
 train_transform = transforms.Compose([
     transforms.ToPILImage(),
-    transforms.Resize((380, 380)),
-    transforms.RandomResizedCrop(380, scale=(0.7, 1.0)),  # for train
+    transforms.RandomResizedCrop(480, scale=(0.7, 1.0)),
     transforms.RandomHorizontalFlip(),
     transforms.RandomRotation(15),
     transforms.ColorJitter(brightness=0.2, contrast=0.2),
@@ -47,7 +59,7 @@ train_transform = transforms.Compose([
 
 val_transform = transforms.Compose([
     transforms.ToPILImage(),
-    transforms.Resize((380, 380)),
+    transforms.Resize((480, 480)),
     transforms.ToTensor(),
     transforms.Normalize([0.485, 0.456, 0.406],[0.229, 0.224, 0.225]),
 ])
@@ -58,25 +70,14 @@ test_dataset  = BreedDataset(test_df,  transform=val_transform)
 
 g = torch.Generator()
 g.manual_seed(42)
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True,  num_workers=4, pin_memory=True, generator=g)
-val_loader   = DataLoader(val_dataset,   batch_size=32, shuffle=False, num_workers=4, pin_memory=True, generator=g)
-test_loader  = DataLoader(test_dataset,  batch_size=32, shuffle=False, num_workers=4, pin_memory=True, generator=g)
+train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True,  num_workers=4, pin_memory=True, generator=g)
+val_loader   = DataLoader(val_dataset,   batch_size=8, shuffle=False, num_workers=4, pin_memory=True, generator=g)
+test_loader  = DataLoader(test_dataset,  batch_size=8, shuffle=False, num_workers=4, pin_memory=True, generator=g)
 
-
-def set_seed(seed=42):
-    random.seed(seed)
-    np.random.seed(seed)
-
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
 
 
 def get_model(num_classes=120):
-    mdl = models.efficientnet_b4(weights=models.EfficientNet_B4_Weights.DEFAULT)
+    mdl = models.efficientnet_v2_m(weights=models.EfficientNet_V2_M_Weights.DEFAULT)
 
     # freeze backbone
     for param in mdl.features.parameters():
@@ -134,6 +135,7 @@ def eval_epoch(mdl, loader, criterion):
 def train(mdl, t_loader, v_loader, epochs=10):
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = torch.optim.Adam([
+        {"params": mdl.features[-4:-2].parameters(), "lr": 5e-6},
         {"params": mdl.features[-2:].parameters(), "lr": 1e-5},
         {"params": mdl.classifier.parameters(), "lr": 1e-4},
     ], weight_decay=1e-4)
@@ -156,6 +158,6 @@ def train(mdl, t_loader, v_loader, epochs=10):
             torch.save(mdl.state_dict(), 'best_model.pth')
             print(f'  -> saved best model (val_acc={val_acc:.4f})')
 
-set_seed(42)
+
 model = get_model(num_classes=120)
 train(model, train_loader, val_loader, epochs=10)
