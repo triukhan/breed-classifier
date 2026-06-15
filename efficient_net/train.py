@@ -75,7 +75,6 @@ val_loader   = DataLoader(val_dataset,   batch_size=8, shuffle=False, num_worker
 test_loader  = DataLoader(test_dataset,  batch_size=8, shuffle=False, num_workers=4, pin_memory=True, generator=g)
 
 
-
 def get_model(num_classes=120):
     mdl = models.efficientnet_v2_m(weights=models.EfficientNet_V2_M_Weights.DEFAULT)
 
@@ -88,10 +87,7 @@ def get_model(num_classes=120):
 
     # replace classifier head
     in_features = mdl.classifier[1].in_features
-    mdl.classifier = nn.Sequential(
-        nn.Dropout(p=0.4),
-        nn.Linear(in_features, num_classes)
-    )
+    mdl.classifier = nn.Sequential(nn.Dropout(p=0.4), nn.Linear(in_features, num_classes))
 
     return mdl.to('cuda')
 
@@ -135,12 +131,11 @@ def eval_epoch(mdl, loader, criterion):
 def train(mdl, t_loader, v_loader, epochs=10):
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = torch.optim.Adam([
-        {"params": mdl.features[-4:-2].parameters(), "lr": 5e-6},
-        {"params": mdl.features[-2:].parameters(), "lr": 1e-5},
-        {"params": mdl.classifier.parameters(), "lr": 1e-4},
+        {'params': mdl.features[-4:-2].parameters(), 'lr': 1e-5},
+        {'params': mdl.features[-2:].parameters(), 'lr': 3e-5},
+        {'params': mdl.classifier.parameters(), 'lr': 3e-4},
     ], weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
-    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
     best_val_acc = 0
 
