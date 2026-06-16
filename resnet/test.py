@@ -56,4 +56,4 @@ mdl.fc = nn.Linear(mdl.fc.in_features,120)
 state_dict = torch.load('best_model.pth', map_location='cuda', weights_only=True)
 mdl.load_state_dict(state_dict, strict=True)
 
-print(eval_epoch(mdl.cuda(), test_loader, nn.CrossEntropyLoss()))
+eval_epoch(mdl.cuda(), test_loader, nn.CrossEntropyLoss())

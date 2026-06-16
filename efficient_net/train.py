@@ -92,7 +92,7 @@ def get_model(num_classes=120):
     return mdl.to('cuda')
 
 
-def train_epoch(mdl, loader, criterion, optimizer):
+def train_epoch(mdl, loader, criterion, optimizer, ema):
     mdl.train()
     total_loss, correct = 0, 0
 
@@ -100,10 +100,14 @@ def train_epoch(mdl, loader, criterion, optimizer):
         imgs, labels = imgs.to('cuda'), labels.to('cuda')
 
         optimizer.zero_grad()
+
         outputs = mdl(imgs)
         loss = criterion(outputs, labels)
+
         loss.backward()
         optimizer.step()
+
+        ema.update(mdl)
 
         total_loss += loss.item()
         correct += (outputs.argmax(1) == labels).sum().item()
@@ -136,12 +140,17 @@ def train(mdl, t_loader, v_loader, epochs=10):
         {'params': mdl.classifier.parameters(), 'lr': 3e-4},
     ], weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    ema = ModelEmaV2(model, decay=0.99)
 
     best_val_acc = 0
 
     for epoch in range(epochs):
-        train_loss, train_acc = train_epoch(mdl, t_loader, criterion, optimizer)
-        val_loss, val_acc = eval_epoch(mdl, v_loader, criterion)
+        train_loss, train_acc = train_epoch(mdl, t_loader, criterion, optimizer, ema)
+        val_loss, val_acc = eval_epoch(
+            ema.module,
+            v_loader,
+            criterion
+        )
         scheduler.step()
 
         print(f'Epoch {epoch+1}/{epochs} '
@@ -150,7 +159,10 @@ def train(mdl, t_loader, v_loader, epochs=10):
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            torch.save(mdl.state_dict(), 'best_model.pth')
+            torch.save(
+                ema.module.state_dict(),
+                'best_model.pth'
+            )
             print(f'  -> saved best model (val_acc={val_acc:.4f})')
 
 
